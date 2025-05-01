@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VibeCoding Updates</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+    <style>
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .loading-overlay.active {
+            display: flex;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div id="loginForm" class="max-w-md mx-auto p-6">
+        <div class="bg-white rounded-lg shadow-sm p-6">
+            <h1 class="text-3xl font-bold text-gray-800 mb-8">VibeCoding Login</h1>
+            <div class="space-y-4">
+                <input 
+                    type="password" 
+                    id="password" 
+                    class="w-full p-4 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Enter password"
+                />
+                <button 
+                    id="loginBtn"
+                    class="w-full bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                    Login
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="mainContent" class="max-w-2xl mx-auto p-6 hidden">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">VibeCoding Updates</h1>
+            <button 
+                id="logoutBtn"
+                class="text-gray-600 hover:text-gray-800"
+            >
+                Logout
+            </button>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-sm p-6">
+            <textarea 
+                id="content" 
+                class="w-full h-48 p-4 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                placeholder="What's on your mind?"
+            ></textarea>
+            
+            <div class="mt-4 flex justify-end">
+                <button 
+                    id="publishBtn"
+                    class="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                    Publish
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <p class="text-gray-700">Processing your update...</p>
+        </div>
+    </div>
+
+    <!-- Error Dialog -->
+    <div id="errorDialog" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+        <div class="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+            <h3 class="text-lg font-semibold text-gray-800 mb-2">Error</h3>
+            <p id="errorMessage" class="text-gray-600 mb-4"></p>
+            <div class="flex justify-end">
+                <button 
+                    id="dismissError"
+                    class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition-colors"
+                >
+                    Dismiss
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const loginForm = document.getElementById('loginForm');
+        const mainContent = document.getElementById('mainContent');
+        const password = document.getElementById('password');
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const content = document.getElementById('content');
+        const publishBtn = document.getElementById('publishBtn');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const errorDialog = document.getElementById('errorDialog');
+        const errorMessage = document.getElementById('errorMessage');
+        const dismissError = document.getElementById('dismissError');
+
+        // Check authentication status on page load
+        async function checkAuth() {
+            try {
+                const response = await fetch('/auth-status');
+                const data = await response.json();
+                if (data.authenticated) {
+                    showMainContent();
+                }
+            } catch (error) {
+                console.error('Auth check failed:', error);
+            }
+        }
+
+        function showMainContent() {
+            loginForm.classList.add('hidden');
+            mainContent.classList.remove('hidden');
+        }
+
+        function showLoginForm() {
+            loginForm.classList.remove('hidden');
+            mainContent.classList.add('hidden');
+        }
+
+        loginBtn.addEventListener('click', async () => {
+            if (!password.value.trim()) {
+                showError('Please enter a password.');
+                return;
+            }
+
+            loadingOverlay.classList.add('active');
+            
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ password: password.value }),
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showMainContent();
+                } else {
+                    showError(data.error || 'Invalid credentials');
+                }
+            } catch (error) {
+                showError('Failed to login. Please try again.');
+            } finally {
+                loadingOverlay.classList.remove('active');
+            }
+        });
+
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                await fetch('/logout', { method: 'POST' });
+                showLoginForm();
+            } catch (error) {
+                showError('Failed to logout. Please try again.');
+            }
+        });
+
+        publishBtn.addEventListener('click', async () => {
+            if (!content.value.trim()) {
+                showError('Please enter some content before publishing.');
+                return;
+            }
+
+            loadingOverlay.classList.add('active');
+            
+            try {
+                const response = await fetch('/publish', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ content: content.value }),
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    content.value = '';
+                    alert('Update published successfully!');
+                } else {
+                    showError(data.message);
+                }
+            } catch (error) {
+                showError('Failed to publish update. Please try again.');
+            } finally {
+                loadingOverlay.classList.remove('active');
+            }
+        });
+
+        dismissError.addEventListener('click', () => {
+            errorDialog.classList.add('hidden');
+        });
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorDialog.classList.remove('hidden');
+        }
+
+        // Check auth status on page load
+        checkAuth();
+    </script>
+</body>
+</html> 

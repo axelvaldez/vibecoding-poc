@@ -1,0 +1,11 @@
+[build]
+  command = "npm install"
+  publish = "public"
+
+[functions]
+  directory = "functions"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200 
