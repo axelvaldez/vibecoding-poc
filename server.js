@@ -28,7 +28,7 @@ const port = process.env.PORT || 3000;
 app.use(helmet());
 app.use(cors({
     origin: process.env.NODE_ENV === 'production' 
-        ? [process.env.ALLOWED_ORIGIN] 
+        ? ['https://u.axel.mx'] 
         : ['http://localhost:3000'],
     credentials: true
 }));
@@ -76,7 +76,17 @@ app.post('/login', async (req, res) => {
     }
     
     try {
+        console.log('Login attempt with password:', password ? 'provided' : 'missing');
+        console.log('Environment variables loaded:', {
+            hasAdminPassword: !!process.env.ADMIN_PASSWORD,
+            hasSessionSecret: !!process.env.SESSION_SECRET,
+            nodeEnv: process.env.NODE_ENV,
+            allowedOrigin: process.env.ALLOWED_ORIGIN
+        });
+
         const match = await bcrypt.compare(password, process.env.ADMIN_PASSWORD);
+        console.log('Password match:', match);
+        
         if (match) {
             req.session.authenticated = true;
             res.json({ success: true });
