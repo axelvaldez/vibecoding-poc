@@ -63,6 +63,34 @@
                 placeholder="What's on your mind?"
             ></textarea>
             
+            <div class="mt-4">
+                <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="addImageCheckbox" class="form-checkbox h-5 w-5 text-blue-500">
+                    <span class="text-gray-700">Add image</span>
+                </label>
+            </div>
+
+            <div id="imageUploadPanel" class="mt-4 hidden">
+                <div class="mb-4">
+                    <input type="file" id="imageUpload" accept=".jpg,.jpeg,.png" class="block w-full text-sm text-gray-500
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-full file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-blue-50 file:text-blue-700
+                        hover:file:bg-blue-100"/>
+                </div>
+                <div class="space-y-2">
+                    <label class="flex items-center space-x-2">
+                        <input type="radio" name="imagePosition" value="above" class="form-radio h-4 w-4 text-blue-500">
+                        <span class="text-gray-700">Above the post</span>
+                    </label>
+                    <label class="flex items-center space-x-2">
+                        <input type="radio" name="imagePosition" value="below" checked class="form-radio h-4 w-4 text-blue-500">
+                        <span class="text-gray-700">Below the post</span>
+                    </label>
+                </div>
+            </div>
+            
             <div class="mt-4 flex justify-end">
                 <button 
                     id="publishBtn"
@@ -109,6 +137,14 @@
         const errorDialog = document.getElementById('errorDialog');
         const errorMessage = document.getElementById('errorMessage');
         const dismissError = document.getElementById('dismissError');
+        const addImageCheckbox = document.getElementById('addImageCheckbox');
+        const imageUploadPanel = document.getElementById('imageUploadPanel');
+        const imageUpload = document.getElementById('imageUpload');
+
+        // Toggle image upload panel
+        addImageCheckbox.addEventListener('change', () => {
+            imageUploadPanel.classList.toggle('hidden', !addImageCheckbox.checked);
+        });
 
         // Check authentication status on page load
         async function checkAuth() {
@@ -182,18 +218,26 @@
             loadingOverlay.classList.add('active');
             
             try {
+                const formData = new FormData();
+                formData.append('content', content.value);
+                
+                if (addImageCheckbox.checked && imageUpload.files.length > 0) {
+                    formData.append('image', imageUpload.files[0]);
+                    formData.append('imagePosition', document.querySelector('input[name="imagePosition"]:checked').value);
+                }
+
                 const response = await fetch('/publish', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ content: content.value }),
+                    body: formData
                 });
 
                 const data = await response.json();
                 
                 if (data.success) {
                     content.value = '';
+                    imageUpload.value = '';
+                    addImageCheckbox.checked = false;
+                    imageUploadPanel.classList.add('hidden');
                     alert('Update published successfully!');
                 } else {
                     showError(data.message);

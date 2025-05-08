@@ -10,6 +10,7 @@ const os = require('os');
 const rimraf = require('rimraf');
 const helmet = require('helmet');
 const cors = require('cors');
+const multer = require('multer');
 require('dotenv').config();
 
 // Validate required environment variables
@@ -57,6 +58,33 @@ app.use(session({
 app.use(bodyParser.json({ limit: '10kb' })); // Limit payload size
 app.use(express.static('public'));
 app.use(limiter);
+
+// Configure multer for image uploads
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        const uploadDir = path.join(os.tmpdir(), 'vibecoding-temp-uploads');
+        fs.mkdirSync(uploadDir, { recursive: true });
+        cb(null, uploadDir);
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const upload = multer({
+    storage: storage,
+    fileFilter: function (req, file, cb) {
+        if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png') {
+            cb(null, true);
+        } else {
+            cb(new Error('Only JPG and PNG files are allowed'));
+        }
+    },
+    limits: {
+        fileSize: 5 * 1024 * 1024 // 5MB limit
+    }
+});
 
 // Authentication middleware
 const requireAuth = (req, res, next) => {
@@ -126,12 +154,12 @@ function generateFilename() {
     return date.toISOString().replace(/[:.]/g, '-').slice(0, 16);
 }
 
-app.post('/publish', requireAuth, async (req, res) => {
+app.post('/publish', requireAuth, upload.single('image'), async (req, res) => {
     const tempDir = path.join(os.tmpdir(), 'vibecoding-temp');
     const targetRepo = 'https://github.com/axelvaldez/axel.mx.git';
     
     try {
-        const { content } = req.body;
+        const { content, imagePosition } = req.body;
         
         // Validate content
         if (!content || typeof content !== 'string' || content.length > 10000) {
@@ -141,13 +169,20 @@ app.post('/publish', requireAuth, async (req, res) => {
         const filename = generateFilename();
         const filePath = path.join('_src', 'updates', `${filename}.md`);
         
-        // Create markdown content
-        const markdownContent = `---
+        // Create markdown content with image if present
+        let markdownContent = `---
 title: ${filename}
 date: ${getCurrentDate()}
 permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
 ---
-${content}`;
+`;
+
+        if (req.file) {
+            const imageMarkdown = `<p><img src="/assets/img/uploads/${path.basename(req.file.path)}"></p>`;
+            markdownContent += imagePosition === 'above' ? imageMarkdown + '\n\n' + content : content + '\n\n' + imageMarkdown;
+        } else {
+            markdownContent += content;
+        }
 
         // Create temp directory and clone repo
         if (fs.existsSync(tempDir)) {
@@ -167,8 +202,17 @@ ${content}`;
         await git.addConfig('user.name', 'VibeCoding Bot');
         await git.addConfig('user.email', 'bot@vibecoding.com');
 
-        // Stage only the new file
+        // Stage the new file and image if present
         await git.add(filePath);
+        if (req.file) {
+            const imagePath = path.join('_src', 'assets', 'img', 'uploads', path.basename(req.file.path));
+            const fullImagePath = path.join(tempDir, imagePath);
+            // Ensure the uploads directory exists in the repo
+            fs.mkdirSync(path.dirname(fullImagePath), { recursive: true });
+            // Copy the uploaded file to the repo
+            fs.copyFileSync(req.file.path, fullImagePath);
+            await git.add(imagePath);
+        }
         
         // Check if there are any changes to commit
         const status = await git.status();
@@ -179,6 +223,9 @@ ${content}`;
 
         // Clean up
         rimraf.sync(tempDir);
+        if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path); // Clean up the uploaded file
+        }
 
         res.json({ success: true, message: 'Update published successfully!' });
     } catch (error) {
@@ -186,6 +233,9 @@ ${content}`;
         // Clean up in case of error
         if (fs.existsSync(tempDir)) {
             rimraf.sync(tempDir);
+        }
+        if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
         }
         res.status(500).json({ 
             success: false, 
