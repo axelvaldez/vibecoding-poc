@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VibeCoding Updates</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
         .loading-overlay {
             display: none;
@@ -25,35 +24,9 @@
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
-    <div id="loginForm" class="max-w-md mx-auto p-6">
-        <div class="bg-white rounded-lg shadow-sm p-6">
-            <h1 class="text-3xl font-bold text-gray-800 mb-8">VibeCoding Login</h1>
-            <div class="space-y-4">
-                <input 
-                    type="password" 
-                    id="password" 
-                    class="w-full p-4 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Enter password"
-                />
-                <button 
-                    id="loginBtn"
-                    class="w-full bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors"
-                >
-                    Login
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <div id="mainContent" class="max-w-2xl mx-auto p-6 hidden">
+    <div id="mainContent" class="max-w-2xl mx-auto p-6">
         <div class="flex justify-between items-center mb-8">
             <h1 class="text-3xl font-bold text-gray-800">VibeCoding Updates</h1>
-            <button 
-                id="logoutBtn"
-                class="text-gray-600 hover:text-gray-800"
-            >
-                Logout
-            </button>
         </div>
         
         <div class="bg-white rounded-lg shadow-sm p-6">
@@ -65,7 +38,7 @@
             
             <div class="mt-4">
                 <label class="flex items-center space-x-2">
-                    <input type="checkbox" id="addImageCheckbox" class="form-checkbox h-5 w-5 text-blue-500">
+                    <input type="checkbox" id="addImageCheckbox" class="h-5 w-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
                     <span class="text-gray-700">Add image</span>
                 </label>
             </div>
@@ -81,11 +54,11 @@
                 </div>
                 <div class="space-y-2">
                     <label class="flex items-center space-x-2">
-                        <input type="radio" name="imagePosition" value="above" class="form-radio h-4 w-4 text-blue-500">
+                        <input type="radio" name="imagePosition" value="above" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
                         <span class="text-gray-700">Above the post</span>
                     </label>
                     <label class="flex items-center space-x-2">
-                        <input type="radio" name="imagePosition" value="below" checked class="form-radio h-4 w-4 text-blue-500">
+                        <input type="radio" name="imagePosition" value="below" checked class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
                         <span class="text-gray-700">Below the post</span>
                     </label>
                 </div>
@@ -126,11 +99,6 @@
     </div>
 
     <script>
-        const loginForm = document.getElementById('loginForm');
-        const mainContent = document.getElementById('mainContent');
-        const password = document.getElementById('password');
-        const loginBtn = document.getElementById('loginBtn');
-        const logoutBtn = document.getElementById('logoutBtn');
         const content = document.getElementById('content');
         const publishBtn = document.getElementById('publishBtn');
         const loadingOverlay = document.getElementById('loadingOverlay');
@@ -144,69 +112,6 @@
         // Toggle image upload panel
         addImageCheckbox.addEventListener('change', () => {
             imageUploadPanel.classList.toggle('hidden', !addImageCheckbox.checked);
-        });
-
-        // Check authentication status on page load
-        async function checkAuth() {
-            try {
-                const response = await fetch('/auth-status');
-                const data = await response.json();
-                if (data.authenticated) {
-                    showMainContent();
-                }
-            } catch (error) {
-                console.error('Auth check failed:', error);
-            }
-        }
-
-        function showMainContent() {
-            loginForm.classList.add('hidden');
-            mainContent.classList.remove('hidden');
-        }
-
-        function showLoginForm() {
-            loginForm.classList.remove('hidden');
-            mainContent.classList.add('hidden');
-        }
-
-        loginBtn.addEventListener('click', async () => {
-            if (!password.value.trim()) {
-                showError('Please enter a password.');
-                return;
-            }
-
-            loadingOverlay.classList.add('active');
-            
-            try {
-                const response = await fetch('/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ password: password.value }),
-                });
-
-                const data = await response.json();
-                
-                if (data.success) {
-                    showMainContent();
-                } else {
-                    showError(data.error || 'Invalid credentials');
-                }
-            } catch (error) {
-                showError('Failed to login. Please try again.');
-            } finally {
-                loadingOverlay.classList.remove('active');
-            }
-        });
-
-        logoutBtn.addEventListener('click', async () => {
-            try {
-                await fetch('/logout', { method: 'POST' });
-                showLoginForm();
-            } catch (error) {
-                showError('Failed to logout. Please try again.');
-            }
         });
 
         publishBtn.addEventListener('click', async () => {
@@ -257,9 +162,6 @@
             errorMessage.textContent = message;
             errorDialog.classList.remove('hidden');
         }
-
-        // Check auth status on page load
-        checkAuth();
     </script>
 </body>
 </html> 

@@ -3,142 +3,40 @@ const bodyParser = require('body-parser');
 const path = require('path');
 const fs = require('fs');
 const simpleGit = require('simple-git');
-const rateLimit = require('express-rate-limit');
-const bcrypt = require('bcrypt');
-const session = require('express-session');
 const os = require('os');
 const rimraf = require('rimraf');
-const helmet = require('helmet');
-const cors = require('cors');
 const multer = require('multer');
 require('dotenv').config();
-
-// Validate required environment variables
-const requiredEnvVars = ['GITHUB_PAT', 'ADMIN_PASSWORD', 'SESSION_SECRET'];
-for (const envVar of requiredEnvVars) {
-    if (!process.env[envVar]) {
-        console.error(`Missing required environment variable: ${envVar}`);
-        process.exit(1);
-    }
-}
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Security middleware
-app.use(helmet());
-app.use(cors({
-    origin: process.env.NODE_ENV === 'production' 
-        ? ['https://u.axel.mx'] 
-        : ['http://localhost:3000'],
-    credentials: true
-}));
-
-// Rate limiting
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
-    message: 'Too many requests from this IP, please try again later.'
-});
-
-// Session configuration
-app.use(session({
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: { 
-        secure: process.env.NODE_ENV === 'production',
-        httpOnly: true,
-        sameSite: 'strict',
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+// Configure multer for handling file uploads
+const upload = multer({
+    storage: multer.diskStorage({
+        destination: function (req, file, cb) {
+            const uploadDir = path.join(__dirname, '_src', 'assets', 'img', 'uploads');
+            fs.mkdirSync(uploadDir, { recursive: true });
+            cb(null, uploadDir);
+        },
+        filename: function (req, file, cb) {
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            cb(null, uniqueSuffix + path.extname(file.originalname));
+        }
+    }),
+    fileFilter: function (req, file, cb) {
+        const allowedTypes = ['image/jpeg', 'image/png'];
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Invalid file type. Only JPEG and PNG files are allowed.'));
+        }
     }
-}));
+});
 
 // Configure body parser
 app.use(bodyParser.json({ limit: '10kb' })); // Limit payload size
 app.use(express.static('public'));
-app.use(limiter);
-
-// Configure multer for image uploads
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const uploadDir = path.join(os.tmpdir(), 'vibecoding-temp-uploads');
-        fs.mkdirSync(uploadDir, { recursive: true });
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
-const upload = multer({
-    storage: storage,
-    fileFilter: function (req, file, cb) {
-        if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/png') {
-            cb(null, true);
-        } else {
-            cb(new Error('Only JPG and PNG files are allowed'));
-        }
-    },
-    limits: {
-        fileSize: 5 * 1024 * 1024 // 5MB limit
-    }
-});
-
-// Authentication middleware
-const requireAuth = (req, res, next) => {
-    if (req.session.authenticated) {
-        next();
-    } else {
-        res.status(401).json({ error: 'Unauthorized' });
-    }
-};
-
-// Login endpoint
-app.post('/login', async (req, res) => {
-    const { password } = req.body;
-    
-    if (!password) {
-        return res.status(400).json({ error: 'Password is required' });
-    }
-    
-    try {
-        console.log('Login attempt with password:', password ? 'provided' : 'missing');
-        console.log('Environment variables loaded:', {
-            hasAdminPassword: !!process.env.ADMIN_PASSWORD,
-            hasSessionSecret: !!process.env.SESSION_SECRET,
-            nodeEnv: process.env.NODE_ENV,
-            allowedOrigin: process.env.ALLOWED_ORIGIN
-        });
-
-        const match = await bcrypt.compare(password, process.env.ADMIN_PASSWORD);
-        console.log('Password match:', match);
-        
-        if (match) {
-            req.session.authenticated = true;
-            res.json({ success: true });
-        } else {
-            // Add delay to prevent timing attacks
-            await new Promise(resolve => setTimeout(resolve, 500));
-            res.status(401).json({ error: 'Invalid credentials' });
-        }
-    } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({ error: 'Server error during login' });
-    }
-});
-
-// Logout endpoint
-app.post('/logout', (req, res) => {
-    req.session.destroy();
-    res.json({ success: true });
-});
-
-// Check auth status
-app.get('/auth-status', (req, res) => {
-    res.json({ authenticated: !!req.session.authenticated });
-});
 
 // Function to get current date in GMT-7
 function getCurrentDate() {
@@ -154,12 +52,12 @@ function generateFilename() {
     return date.toISOString().replace(/[:.]/g, '-').slice(0, 16);
 }
 
-app.post('/publish', requireAuth, upload.single('image'), async (req, res) => {
+app.post('/publish', upload.single('image'), async (req, res) => {
     const tempDir = path.join(os.tmpdir(), 'vibecoding-temp');
     const targetRepo = 'https://github.com/axelvaldez/axel.mx.git';
     
     try {
-        const { content, imagePosition } = req.body;
+        const { content } = req.body;
         
         // Validate content
         if (!content || typeof content !== 'string' || content.length > 10000) {
@@ -169,17 +67,23 @@ app.post('/publish', requireAuth, upload.single('image'), async (req, res) => {
         const filename = generateFilename();
         const filePath = path.join('_src', 'updates', `${filename}.md`);
         
-        // Create markdown content with image if present
         let markdownContent = `---
 title: ${filename}
 date: ${getCurrentDate()}
 permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
----
-`;
+---\n`;
 
+        // Handle image if uploaded
         if (req.file) {
-            const imageMarkdown = `<p><img src="/assets/img/uploads/${path.basename(req.file.path)}"></p>`;
-            markdownContent += imagePosition === 'above' ? imageMarkdown + '\n\n' + content : content + '\n\n' + imageMarkdown;
+            const imagePosition = req.body.imagePosition || 'below';
+            const imagePath = path.join('assets', 'img', 'uploads', req.file.filename);
+            const imageMarkdown = `<p><img src="/${imagePath}" alt="Uploaded image"></p>\n`;
+            
+            if (imagePosition === 'above') {
+                markdownContent += imageMarkdown + content;
+            } else {
+                markdownContent += content + '\n' + imageMarkdown;
+            }
         } else {
             markdownContent += content;
         }
@@ -198,21 +102,21 @@ permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
         fs.mkdirSync(path.dirname(fullFilePath), { recursive: true });
         fs.writeFileSync(fullFilePath, markdownContent);
 
+        // If there's an image, copy it to the repo
+        if (req.file) {
+            const sourceImagePath = req.file.path;
+            const targetImagePath = path.join(tempDir, '_src', 'assets', 'img', 'uploads', req.file.filename);
+            fs.mkdirSync(path.dirname(targetImagePath), { recursive: true });
+            fs.copyFileSync(sourceImagePath, targetImagePath);
+            fs.unlinkSync(sourceImagePath); // Clean up the uploaded file
+        }
+
         // Configure git for the target repo
         await git.addConfig('user.name', 'VibeCoding Bot');
         await git.addConfig('user.email', 'bot@vibecoding.com');
 
-        // Stage the new file and image if present
-        await git.add(filePath);
-        if (req.file) {
-            const imagePath = path.join('_src', 'assets', 'img', 'uploads', path.basename(req.file.path));
-            const fullImagePath = path.join(tempDir, imagePath);
-            // Ensure the uploads directory exists in the repo
-            fs.mkdirSync(path.dirname(fullImagePath), { recursive: true });
-            // Copy the uploaded file to the repo
-            fs.copyFileSync(req.file.path, fullImagePath);
-            await git.add(imagePath);
-        }
+        // Stage all changes
+        await git.add('.');
         
         // Check if there are any changes to commit
         const status = await git.status();
@@ -223,9 +127,6 @@ permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
 
         // Clean up
         rimraf.sync(tempDir);
-        if (req.file && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path); // Clean up the uploaded file
-        }
 
         res.json({ success: true, message: 'Update published successfully!' });
     } catch (error) {
@@ -234,7 +135,7 @@ permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
         if (fs.existsSync(tempDir)) {
             rimraf.sync(tempDir);
         }
-        if (req.file && fs.existsSync(req.file.path)) {
+        if (req.file) {
             fs.unlinkSync(req.file.path);
         }
         res.status(500).json({ 
@@ -250,6 +151,6 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Something broke!' });
 });
 
-app.listen(process.env.PORT || 3000, () => {
-    console.log(`Server running`);
+app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
 }); 
