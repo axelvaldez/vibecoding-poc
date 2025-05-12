@@ -91,7 +91,7 @@ permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
         if (imageBuffer) {
             console.log('Processing image upload');
             const imageFilename = `${Date.now()}-${Math.round(Math.random() * 1E9)}.jpg`;
-            const imagePath = `_src/assets/img/uploads/${imageFilename}`;
+            const imagePath = `assets/img/uploads/${imageFilename}`;
             const imageMarkdown = `<p><img src="/${imagePath}" alt="Uploaded image"></p>\n\n`;
             
             if (imagePosition === 'above') {
