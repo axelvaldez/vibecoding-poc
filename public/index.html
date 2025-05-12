@@ -218,7 +218,7 @@
                     formData.append('imagePosition', document.querySelector('input[name="imagePosition"]:checked').value);
                 }
 
-                const response = await fetch('/publish', {
+                const response = await fetch('/.netlify/functions/publish', {
                     method: 'POST',
                     headers: {
                         'x-admin-password': sessionStorage.getItem('password')
