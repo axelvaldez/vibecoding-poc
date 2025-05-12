@@ -6,6 +6,9 @@ const simpleGit = require('simple-git');
 const bcrypt = require('bcrypt');
 
 exports.handler = async (event, context) => {
+    console.log('Function started');
+    console.log('Event:', JSON.stringify(event, null, 2));
+
     // Only allow POST
     if (event.httpMethod !== 'POST') {
         return {
@@ -32,34 +35,25 @@ exports.handler = async (event, context) => {
             };
         }
 
-        // Parse the multipart form data
-        const boundary = event.headers['content-type'].split('boundary=')[1];
-        const body = Buffer.from(event.body, 'base64');
-        const parts = body.toString().split(`--${boundary}`);
-
+        // Parse the request body
         let content = '';
         let imageBuffer = null;
         let imagePosition = 'below';
 
-        for (const part of parts) {
-            if (part.includes('content')) {
-                const contentMatch = part.match(/name="content"\r\n\r\n([\s\S]*?)\r\n/);
-                if (contentMatch) {
-                    content = contentMatch[1];
-                }
+        try {
+            const body = JSON.parse(event.body);
+            content = body.content || '';
+            imagePosition = body.imagePosition || 'below';
+            
+            if (body.image) {
+                imageBuffer = Buffer.from(body.image.split(',')[1], 'base64');
             }
-            if (part.includes('imagePosition')) {
-                const positionMatch = part.match(/name="imagePosition"\r\n\r\n([\s\S]*?)\r\n/);
-                if (positionMatch) {
-                    imagePosition = positionMatch[1];
-                }
-            }
-            if (part.includes('image')) {
-                const imageMatch = part.match(/filename="([^"]+)"\r\nContent-Type: ([^\r\n]+)\r\n\r\n([\s\S]*?)\r\n/);
-                if (imageMatch) {
-                    imageBuffer = Buffer.from(imageMatch[3], 'binary');
-                }
-            }
+        } catch (parseError) {
+            console.error('Error parsing request body:', parseError);
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error: 'Invalid request format' })
+            };
         }
 
         // Validate content
@@ -69,6 +63,8 @@ exports.handler = async (event, context) => {
                 body: JSON.stringify({ error: 'Invalid content' })
             };
         }
+
+        console.log('Content validated, proceeding with git operations');
 
         const tempDir = path.join(os.tmpdir(), 'vibecoding-temp');
         const targetRepo = `https://${process.env.GITHUB_PAT}@github.com/axelvaldez/axel.mx.git`;
@@ -87,6 +83,7 @@ permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
 
         // Handle image if uploaded
         if (imageBuffer) {
+            console.log('Processing image upload');
             const imageFilename = `${Date.now()}-${Math.round(Math.random() * 1E9)}.jpg`;
             const imagePath = path.join('assets', 'img', 'uploads', imageFilename);
             const imageMarkdown = `<p><img src="/${imagePath}" alt="Uploaded image"></p>\n\n`;
@@ -103,6 +100,7 @@ permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
             }
             fs.mkdirSync(tempDir);
             
+            console.log('Cloning repository');
             const git = simpleGit(tempDir);
             await git.clone(targetRepo, tempDir);
             
@@ -117,6 +115,7 @@ permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
             fs.writeFileSync(targetImagePath, imageBuffer);
 
             // Configure git and commit
+            console.log('Configuring git and committing changes');
             await git.addConfig('user.name', 'VibeCoding Bot');
             await git.addConfig('user.email', 'bot@vibecoding.com');
             await git.add('.');
@@ -135,12 +134,14 @@ permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
                 body: JSON.stringify({ success: true, message: 'Update published successfully!' })
             };
         } else {
+            console.log('Processing text-only update');
             // Handle text-only update
             if (fs.existsSync(tempDir)) {
                 rimraf.sync(tempDir);
             }
             fs.mkdirSync(tempDir);
             
+            console.log('Cloning repository');
             const git = simpleGit(tempDir);
             await git.clone(targetRepo, tempDir);
             
@@ -148,6 +149,7 @@ permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
             fs.mkdirSync(path.dirname(fullFilePath), { recursive: true });
             fs.writeFileSync(fullFilePath, markdownContent + content);
 
+            console.log('Configuring git and committing changes');
             await git.addConfig('user.name', 'VibeCoding Bot');
             await git.addConfig('user.email', 'bot@vibecoding.com');
             await git.add('.');
