@@ -6,10 +6,31 @@ const simpleGit = require('simple-git');
 const os = require('os');
 const rimraf = require('rimraf');
 const multer = require('multer');
+const bcrypt = require('bcrypt');
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// Authentication middleware
+const authenticate = async (req, res, next) => {
+    const providedPassword = req.headers['x-admin-password'];
+    
+    if (!providedPassword) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    try {
+        const isValid = await bcrypt.compare(providedPassword, process.env.ADMIN_PASSWORD);
+        if (!isValid) {
+            return res.status(401).json({ error: 'Invalid password' });
+        }
+        next();
+    } catch (error) {
+        console.error('Authentication error:', error);
+        res.status(500).json({ error: 'Authentication failed' });
+    }
+};
 
 // Configure multer for handling file uploads
 const upload = multer({
@@ -52,9 +73,9 @@ function generateFilename() {
     return date.toISOString().replace(/[:.]/g, '-').slice(0, 16);
 }
 
-app.post('/publish', upload.single('image'), async (req, res) => {
+app.post('/publish', authenticate, upload.single('image'), async (req, res) => {
     const tempDir = path.join(os.tmpdir(), 'vibecoding-temp');
-    const targetRepo = 'https://github.com/axelvaldez/axel.mx.git';
+    const targetRepo = `https://${process.env.GITHUB_PAT}@github.com/axelvaldez/axel.mx.git`;
     
     try {
         const { content } = req.body;
@@ -77,12 +98,12 @@ permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
         if (req.file) {
             const imagePosition = req.body.imagePosition || 'below';
             const imagePath = path.join('assets', 'img', 'uploads', req.file.filename);
-            const imageMarkdown = `<p><img src="/${imagePath}" alt="Uploaded image"></p>\n`;
+            const imageMarkdown = `<p><img src="/${imagePath}" alt="Uploaded image"></p>\n\n`;
             
             if (imagePosition === 'above') {
                 markdownContent += imageMarkdown + content;
             } else {
-                markdownContent += content + '\n' + imageMarkdown;
+                markdownContent += content + '\n\n' + imageMarkdown;
             }
         } else {
             markdownContent += content;
@@ -107,8 +128,13 @@ permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
             const sourceImagePath = req.file.path;
             const targetImagePath = path.join(tempDir, '_src', 'assets', 'img', 'uploads', req.file.filename);
             fs.mkdirSync(path.dirname(targetImagePath), { recursive: true });
-            fs.copyFileSync(sourceImagePath, targetImagePath);
-            fs.unlinkSync(sourceImagePath); // Clean up the uploaded file
+            
+            // Read the image file and ensure it's in the correct format
+            const imageBuffer = fs.readFileSync(sourceImagePath);
+            fs.writeFileSync(targetImagePath, imageBuffer);
+            
+            // Clean up the uploaded file
+            fs.unlinkSync(sourceImagePath);
         }
 
         // Configure git for the target repo
@@ -153,4 +179,4 @@ app.use((err, req, res, next) => {
 
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
-}); 
+});
