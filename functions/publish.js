@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const rimraf = require('rimraf');
-const simpleGit = require('simple-git');
 const bcrypt = require('bcrypt');
+const { Octokit } = require('@octokit/rest');
 
 exports.handler = async (event, context) => {
     console.log('Function started');
@@ -64,16 +64,22 @@ exports.handler = async (event, context) => {
             };
         }
 
-        console.log('Content validated, proceeding with git operations');
+        console.log('Content validated, proceeding with GitHub operations');
 
-        const tempDir = path.join(os.tmpdir(), 'vibecoding-temp');
-        const targetRepo = `https://${process.env.GITHUB_PAT}@github.com/axelvaldez/axel.mx.git`;
+        // Initialize Octokit
+        const octokit = new Octokit({
+            auth: process.env.GITHUB_PAT
+        });
+
+        const owner = 'axelvaldez';
+        const repo = 'axel.mx';
+        const branch = 'main';
 
         // Generate filename and content
         const date = new Date();
         date.setHours(date.getHours() - 7); // Convert to GMT-7
         const filename = date.toISOString().replace(/[:.]/g, '-').slice(0, 16);
-        const filePath = path.join('_src', 'updates', `${filename}.md`);
+        const filePath = `_src/updates/${filename}.md`;
 
         let markdownContent = `---
 title: ${filename}
@@ -85,7 +91,7 @@ permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
         if (imageBuffer) {
             console.log('Processing image upload');
             const imageFilename = `${Date.now()}-${Math.round(Math.random() * 1E9)}.jpg`;
-            const imagePath = path.join('assets', 'img', 'uploads', imageFilename);
+            const imagePath = `_src/assets/img/uploads/${imageFilename}`;
             const imageMarkdown = `<p><img src="/${imagePath}" alt="Uploaded image"></p>\n\n`;
             
             if (imagePosition === 'above') {
@@ -94,79 +100,33 @@ permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
                 markdownContent += content + '\n\n' + imageMarkdown;
             }
 
-            // Create temp directory and clone repo
-            if (fs.existsSync(tempDir)) {
-                rimraf.sync(tempDir);
-            }
-            fs.mkdirSync(tempDir);
-            
-            console.log('Cloning repository');
-            const git = simpleGit(tempDir);
-            await git.clone(targetRepo, tempDir);
-            
-            // Write markdown file
-            const fullFilePath = path.join(tempDir, filePath);
-            fs.mkdirSync(path.dirname(fullFilePath), { recursive: true });
-            fs.writeFileSync(fullFilePath, markdownContent);
-
-            // Write image file
-            const targetImagePath = path.join(tempDir, '_src', 'assets', 'img', 'uploads', imageFilename);
-            fs.mkdirSync(path.dirname(targetImagePath), { recursive: true });
-            fs.writeFileSync(targetImagePath, imageBuffer);
-
-            // Configure git and commit
-            console.log('Configuring git and committing changes');
-            await git.addConfig('user.name', 'VibeCoding Bot');
-            await git.addConfig('user.email', 'bot@vibecoding.com');
-            await git.add('.');
-            
-            const status = await git.status();
-            if (status.files.length > 0) {
-                await git.commit(`Add update ${filename}`);
-                await git.push('origin', 'main');
-            }
-
-            // Clean up
-            rimraf.sync(tempDir);
-
-            return {
-                statusCode: 200,
-                body: JSON.stringify({ success: true, message: 'Update published successfully!' })
-            };
+            // Upload image file
+            await octokit.repos.createOrUpdateFileContents({
+                owner,
+                repo,
+                path: imagePath,
+                message: `Add image ${imageFilename}`,
+                content: imageBuffer.toString('base64'),
+                branch
+            });
         } else {
-            console.log('Processing text-only update');
-            // Handle text-only update
-            if (fs.existsSync(tempDir)) {
-                rimraf.sync(tempDir);
-            }
-            fs.mkdirSync(tempDir);
-            
-            console.log('Cloning repository');
-            const git = simpleGit(tempDir);
-            await git.clone(targetRepo, tempDir);
-            
-            const fullFilePath = path.join(tempDir, filePath);
-            fs.mkdirSync(path.dirname(fullFilePath), { recursive: true });
-            fs.writeFileSync(fullFilePath, markdownContent + content);
-
-            console.log('Configuring git and committing changes');
-            await git.addConfig('user.name', 'VibeCoding Bot');
-            await git.addConfig('user.email', 'bot@vibecoding.com');
-            await git.add('.');
-            
-            const status = await git.status();
-            if (status.files.length > 0) {
-                await git.commit(`Add update ${filename}`);
-                await git.push('origin', 'main');
-            }
-
-            rimraf.sync(tempDir);
-
-            return {
-                statusCode: 200,
-                body: JSON.stringify({ success: true, message: 'Update published successfully!' })
-            };
+            markdownContent += content;
         }
+
+        // Upload markdown file
+        await octokit.repos.createOrUpdateFileContents({
+            owner,
+            repo,
+            path: filePath,
+            message: `Add update ${filename}`,
+            content: Buffer.from(markdownContent).toString('base64'),
+            branch
+        });
+
+        return {
+            statusCode: 200,
+            body: JSON.stringify({ success: true, message: 'Update published successfully!' })
+        };
     } catch (error) {
         console.error('Error details:', {
             message: error.message,
