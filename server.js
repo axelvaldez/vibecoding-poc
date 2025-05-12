@@ -156,7 +156,12 @@ permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
 
         res.json({ success: true, message: 'Update published successfully!' });
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            code: error.code,
+            command: error.command
+        });
         // Clean up in case of error
         if (fs.existsSync(tempDir)) {
             rimraf.sync(tempDir);
@@ -166,7 +171,8 @@ permalink: "updates/{{ page.date | date: '%Y%m%d%H%M%S' }}/index.html"
         }
         res.status(500).json({ 
             success: false, 
-            message: 'Failed to publish update. Please try again.' 
+            message: 'Failed to publish update. Please try again.',
+            error: error.message // Include the actual error message
         });
     }
 });
