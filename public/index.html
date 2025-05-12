@@ -161,12 +161,13 @@
             loadingOverlay.classList.add('active');
             
             try {
-                const response = await fetch('/publish', {
+                const response = await fetch('/.netlify/functions/publish', {
                     method: 'POST',
                     headers: {
+                        'Content-Type': 'application/json',
                         'x-admin-password': passwordValue
                     },
-                    body: new FormData()
+                    body: JSON.stringify({ content: '' })
                 });
 
                 if (response.status === 401) {
