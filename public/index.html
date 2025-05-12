@@ -24,9 +24,40 @@
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
-    <div id="mainContent" class="max-w-2xl mx-auto p-6">
+    <!-- Login Form -->
+    <div id="loginForm" class="max-w-md mx-auto p-6 mt-20">
+        <div class="bg-white rounded-lg shadow-sm p-6">
+            <h1 class="text-2xl font-bold text-gray-800 mb-6">VibeCoding Updates</h1>
+            <div class="space-y-4">
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                    <input 
+                        type="password" 
+                        id="password" 
+                        class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter password"
+                    >
+                </div>
+                <button 
+                    id="loginBtn"
+                    class="w-full bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                    Login
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content (Hidden by default) -->
+    <div id="mainContent" class="max-w-2xl mx-auto p-6 hidden">
         <div class="flex justify-between items-center mb-8">
             <h1 class="text-3xl font-bold text-gray-800">VibeCoding Updates</h1>
+            <button 
+                id="logoutBtn"
+                class="text-gray-600 hover:text-gray-800"
+            >
+                Logout
+            </button>
         </div>
         
         <div class="bg-white rounded-lg shadow-sm p-6">
@@ -99,6 +130,11 @@
     </div>
 
     <script>
+        const loginForm = document.getElementById('loginForm');
+        const mainContent = document.getElementById('mainContent');
+        const password = document.getElementById('password');
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
         const content = document.getElementById('content');
         const publishBtn = document.getElementById('publishBtn');
         const loadingOverlay = document.getElementById('loadingOverlay');
@@ -108,6 +144,57 @@
         const addImageCheckbox = document.getElementById('addImageCheckbox');
         const imageUploadPanel = document.getElementById('imageUploadPanel');
         const imageUpload = document.getElementById('imageUpload');
+
+        // Check if already authenticated
+        if (sessionStorage.getItem('authenticated')) {
+            showMainContent();
+        }
+
+        // Login handler
+        loginBtn.addEventListener('click', async () => {
+            const passwordValue = password.value.trim();
+            if (!passwordValue) {
+                showError('Please enter a password');
+                return;
+            }
+
+            loadingOverlay.classList.add('active');
+            
+            try {
+                const response = await fetch('/publish', {
+                    method: 'POST',
+                    headers: {
+                        'x-admin-password': passwordValue
+                    },
+                    body: new FormData()
+                });
+
+                if (response.status === 401) {
+                    showError('Invalid password');
+                } else {
+                    sessionStorage.setItem('authenticated', 'true');
+                    sessionStorage.setItem('password', passwordValue);
+                    showMainContent();
+                }
+            } catch (error) {
+                showError('Authentication failed. Please try again.');
+            } finally {
+                loadingOverlay.classList.remove('active');
+            }
+        });
+
+        // Logout handler
+        logoutBtn.addEventListener('click', () => {
+            sessionStorage.removeItem('authenticated');
+            showLoginForm();
+        });
+
+        // Enter key handler for login
+        password.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                loginBtn.click();
+            }
+        });
 
         // Toggle image upload panel
         addImageCheckbox.addEventListener('change', () => {
@@ -133,6 +220,9 @@
 
                 const response = await fetch('/publish', {
                     method: 'POST',
+                    headers: {
+                        'x-admin-password': sessionStorage.getItem('password')
+                    },
                     body: formData
                 });
 
@@ -145,7 +235,7 @@
                     imageUploadPanel.classList.add('hidden');
                     alert('Update published successfully!');
                 } else {
-                    showError(data.message);
+                    showError(data.message || 'Failed to publish update');
                 }
             } catch (error) {
                 showError('Failed to publish update. Please try again.');
@@ -161,6 +251,17 @@
         function showError(message) {
             errorMessage.textContent = message;
             errorDialog.classList.remove('hidden');
+        }
+
+        function showMainContent() {
+            loginForm.classList.add('hidden');
+            mainContent.classList.remove('hidden');
+        }
+
+        function showLoginForm() {
+            loginForm.classList.remove('hidden');
+            mainContent.classList.add('hidden');
+            password.value = '';
         }
     </script>
 </body>
